@@ -166,9 +166,10 @@ def check_content_safety(*, text: str | None = None, media: str | None = None) -
         Tuple of (is_safe, feedback_message, mime_type)
     """
     # Create a tracing span for this moderation check
-    # TODO: use the tracer to create a span named "moderate_text"
-    # HINT: use tracer.start_as_current_span with the name of the span as argument
-    with ... as span:
+    if (text is None) == (media is None):
+        raise ValueError("Must provide exactly one of text or media")
+
+    with tracer.start_as_current_span("moderate_text") as span:
 
         # Route to the appropriate moderation function
         if text is not None:
@@ -176,9 +177,6 @@ def check_content_safety(*, text: str | None = None, media: str | None = None) -
 
         elif media is not None:
             result, feedback, content_type, mime_type = _call_media_moderation(media, span)
-
-        else:
-            raise ValueError("Must provide exactly one of text or media")
 
         # Add moderation results to tracing span
         span.set_attributes({f"output.{k}": v for k, v in result.items()})
@@ -208,12 +206,12 @@ class ChatSessionWithTracing:
     def __init__(self):
         self.session_id = str(uuid.uuid4())
         # Create a root span for the entire conversation
-        # TODO: use the tracer to create a span named "conversation" and set an attribute "session.id" with the session_id
-        # HINT: use tracer.start_span with the name of the span as argument, and set
-        #       an attribute "session.id" with the session_id by using attributes={"session.id": self.session_id}
         # NOTE: this is start_span, NOT start_as_current_span because we want to keep this span open across multiple chat turns
         #      and only close it when the conversation ends.
-        self.conversation_span = ... # Replace with your span
+        self.conversation_span = tracer.start_span(
+            "conversation",
+            attributes={"session.id": self.session_id},
+        )
 
     async def chat_with_gemini(self, message: dict, history: List, past_messages: List) -> Tuple[str, List, str]:
         """
@@ -236,13 +234,10 @@ class ChatSessionWithTracing:
         """
         # Create a tracing span for this chat turn
 
-        # TODO: use the tracer to create a span named "chat_turn"
-        # HINT: use tracer.start_as_current_span with the name of the span as argument, and
-        #       set the context to the conversation_span using:
-        #           context=trace.set_span_in_context(self.conversation_span)
-        #       so that this span is a child of the conversation span. Feel free to add
-        #       attributes to the span as needed.
-        with ... as span:
+        with tracer.start_as_current_span(
+            "chat_turn",
+            context=trace.set_span_in_context(self.conversation_span),
+        ) as span:
             
             logger.info(f"New turn - Text: '{message.get('text', '')[:50]}...', Files: {len(message.get('files', []))}")
 
@@ -268,9 +263,7 @@ class ChatSessionWithTracing:
                         feedback = f"⚠️ Content flagged: {safety_message}"
                         response = "[This content was flagged by moderation and not sent to the AI. Please try again.]"
 
-                        # TODO: set an attribute "feedback" in the tracing span with the feedback message
-                        # HINT: use span.set_attribute with "feedback" as the key and feedback as the value
-                        ...
+                        span.set_attribute("feedback", feedback)
 
                         return response, past_messages, feedback
 
@@ -293,6 +286,7 @@ class ChatSessionWithTracing:
                                 response = (
                                     "[This content was flagged by moderation and not sent to the AI. Please try again.]"
                                 )
+                                span.set_attribute("feedback", feedback)
 
                                 return response, past_messages, feedback
 
@@ -300,14 +294,12 @@ class ChatSessionWithTracing:
                             with open(file_path, "rb") as f:
                                 file_bytes = f.read()
                             
-                            # TODO: create a BinaryContent object with data=file_bytes and media_type=mime_type
-                            # and append it to prompt_parts so it's included in the prompt to the AI
-                            ...
+                            prompt_parts.append(BinaryContent(data=file_bytes, media_type=mime_type))
 
                         except ValueError as e:
                             raise gr.Error(str(e))
 
-            if not prompt_parts:
+            if not message.get("text") and not message.get("files"):
                 raise gr.Error("Please provide a message or at least one file.")
 
             # All content passed moderation - send to AI customer
@@ -315,11 +307,6 @@ class ChatSessionWithTracing:
                 with tracer.start_as_current_span("llm_customer"):
 
                     # GEMINI CALL: Send prompt to AI agent that plays the customer role
-                    # TODO: use await customer_agent.run to get the result
-                    # HINT: pass the prompt_parts as the first argument, and do not forget to
-                    #       pass the past_messages as the message_history otherwise the agent
-                    #       will lose context of the conversation across turns.
-                    # NOTE: this is await customer_agent.run since this is an async function.
                     result = await customer_agent.run(
                         prompt_parts,
                         message_history=past_messages,
@@ -385,15 +372,14 @@ def create_chat_interface() -> gr.Blocks:
         with gr.Row():
             # Left column: Chat interface (75% width)
             with gr.Column(scale=3):
-                # TODO: fill the missing arguments to gr.ChatInterface
                 gr.ChatInterface(
-                    fn=..., # This is the function called at each turn, and should be chat_session.chat_with_gemini
+                    fn=chat_session.chat_with_gemini,
                     type="messages",  # Use newer messages format (supports multimodal)
-                    multimodal=...,  # Enable file uploads by setting this to True
+                    multimodal=True,
                     editable=False,  # Don't allow editing past messages
                     textbox=gr.MultimodalTextbox(
                         file_count="multiple",  # Allow multiple files
-                        file_types=...,  # Set this to a list of allowed file types ("image", "video", "audio")
+                        file_types=["image", "video", "audio"],
                         sources=["upload", "microphone"],  # Allow file upload and recording
                         placeholder="Type a message, upload files, or record audio...",
                     ),
@@ -403,11 +389,8 @@ def create_chat_interface() -> gr.Blocks:
                         placeholder="👋 Start by greeting the customer or introducing yourself. The AI customer will respond with their complaint.",
                         height="75vh",
                     ),
-                    # TODO: in order to use pydantic AI with Gradio, we need to pass the past_messages_state
-                    # as additional_inputs and additional_outputs. Additional outputs should also include feedback_display
-                    # so the second value returned by our function is directly passed in to feedback_display.
-                    additional_inputs=...,  # This should be a list containing past_messages_state
-                    additional_outputs=...,  # This should be a list containing past_messages_state and feedback_display
+                    additional_inputs=[past_messages_state],
+                    additional_outputs=[past_messages_state, feedback_display],
                 )
 
             # Right column: Feedback and guidelines (25% width)

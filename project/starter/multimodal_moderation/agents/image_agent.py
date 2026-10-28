@@ -40,17 +40,11 @@ async def moderate_image(
     media_type: str
 ) -> ImageModerationResult:
 
-    # TODO: Create a BinaryContent object with data=image_source and media_type=media_type
-    image_input = ...  # Replace with your BinaryContent object
+    image_input = BinaryContent(data=image_source, media_type=media_type)
 
-    # TODO: Run the image_moderation_agent with a list containing a prompt and image_input,
-    #       then return result.output
-    # NOTE: in the class we used agent.run_sync but here we need to use
-    #       await agent.run since this is an async function. They work exactly
-    #       the same. Just do:
-    #           result = await agent.run([parameters])
-    #       instead of:
-    #           result = agent.run_sync([parameters])
-    #       like we did in the class.
-    # Make sure to pass: model=model_choice.model and model_settings=model_choice.model_settings
-    raise NotImplementedError("TODO: Implement image moderation")
+    result = await image_moderation_agent.run(
+        ["Analyze this image for harmful content.", image_input],
+        model=model_choice.model,
+        model_settings=model_choice.model_settings,
+    )
+    return result.output

@@ -19,9 +19,10 @@ purchase.
 
 BEHAVIOR
 
-Initially act a little over the top, without ever being abusive or upsetting. However, if the
-agent is polite and professional, you will gradually calm down.
-Keep your responses short and concise.
+Follow the customer persona specified in the support agent's latest message. Stay
+realistic and concise, and never become abusive or upsetting. React naturally to
+the quality of the support agent's responses while staying consistent with the
+selected persona.
 """
 
 gemini_model = GoogleModel(DEFAULT_GOOGLE_MODEL, provider=GoogleProvider(api_key=GEMINI_API_KEY))

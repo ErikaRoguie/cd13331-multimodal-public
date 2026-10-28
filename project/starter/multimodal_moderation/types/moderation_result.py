@@ -12,6 +12,11 @@ class TextModerationResult(ModerationResult):
     contains_pii: bool = Field(description="Whether the message contains any personally-identifiable information (PII)")
     is_unfriendly: bool = Field(description="Whether unfriendly tone or content was detected")
     is_unprofessional: bool = Field(description="Whether unprofessional tone or content was detected")
+    contains_hate_speech: bool = Field(description="Whether the message contains hate speech or targeted hateful abuse")
+    is_spam: bool = Field(description="Whether the message contains unsolicited or repetitive spam")
+    contains_misinformation: bool = Field(
+        description="Whether the message makes a clearly false factual claim that can be verified from provided context"
+    )
 
 
 class ImageModerationResult(ModerationResult):
@@ -37,3 +42,8 @@ class AudioModerationResult(ModerationResult):
     contains_pii: bool = Field(description="Whether the audio contains personally-identifiable information (PII)")
     is_unfriendly: bool = Field(description="Whether unfriendly tone or content was detected")
     is_unprofessional: bool = Field(description="Whether unprofessional tone or content was detected")
+    contains_hate_speech: bool = Field(description="Whether the audio contains hate speech or targeted hateful abuse")
+    is_spam: bool = Field(description="Whether the audio contains unsolicited or repetitive spam")
+    contains_misinformation: bool = Field(
+        description="Whether the audio makes a clearly false factual claim that can be verified from provided context"
+    )

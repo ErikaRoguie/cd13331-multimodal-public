@@ -47,8 +47,9 @@ async def test_moderate_audio_returns_audio_moderation_result():
     with audio_moderation_agent.override(model=TestModel()):
         result = await moderate_audio(model, audio_bytes, media_type="audio/mpeg")
 
-    assert isinstance(result, AudioModerationResult), \
-        f"moderate_audio should return AudioModerationResult, got {type(result)}"
+    assert isinstance(
+        result, AudioModerationResult
+    ), f"moderate_audio should return AudioModerationResult, got {type(result)}"
 
 
 async def test_moderate_audio_has_required_fields():
@@ -59,16 +60,22 @@ async def test_moderate_audio_has_required_fields():
     with audio_moderation_agent.override(model=TestModel()):
         result = await moderate_audio(model, audio_bytes, media_type="audio/mpeg")
 
-    assert hasattr(result, 'transcription'), "Result must have 'transcription' field"
-    assert hasattr(result, 'contains_pii'), "Result must have 'contains_pii' field"
-    assert hasattr(result, 'is_unfriendly'), "Result must have 'is_unfriendly' field"
-    assert hasattr(result, 'is_unprofessional'), "Result must have 'is_unprofessional' field"
-    assert hasattr(result, 'rationale'), "Result must have 'rationale' field"
+    assert hasattr(result, "transcription"), "Result must have 'transcription' field"
+    assert hasattr(result, "contains_pii"), "Result must have 'contains_pii' field"
+    assert hasattr(result, "is_unfriendly"), "Result must have 'is_unfriendly' field"
+    assert hasattr(result, "is_unprofessional"), "Result must have 'is_unprofessional' field"
+    assert hasattr(result, "contains_hate_speech"), "Result must have 'contains_hate_speech' field"
+    assert hasattr(result, "is_spam"), "Result must have 'is_spam' field"
+    assert hasattr(result, "contains_misinformation"), "Result must have 'contains_misinformation' field"
+    assert hasattr(result, "rationale"), "Result must have 'rationale' field"
 
     assert isinstance(result.transcription, str), "transcription should be a string"
     assert isinstance(result.contains_pii, bool), "contains_pii should be a boolean"
     assert isinstance(result.is_unfriendly, bool), "is_unfriendly should be a boolean"
     assert isinstance(result.is_unprofessional, bool), "is_unprofessional should be a boolean"
+    assert isinstance(result.contains_hate_speech, bool), "contains_hate_speech should be a boolean"
+    assert isinstance(result.is_spam, bool), "is_spam should be a boolean"
+    assert isinstance(result.contains_misinformation, bool), "contains_misinformation should be a boolean"
     assert isinstance(result.rationale, str), "rationale should be a string"
 
 

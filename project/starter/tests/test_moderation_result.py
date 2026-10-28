@@ -36,7 +36,9 @@ class TestModerationResult:
         """Verify ModerationResult is a Pydantic BaseModel"""
         result = ModerationResult(rationale="Test")
         assert hasattr(result, "model_dump"), "ModerationResult should have model_dump method (Pydantic BaseModel)"
-        assert hasattr(result, "model_validate"), "ModerationResult should have model_validate method (Pydantic BaseModel)"
+        assert hasattr(
+            result, "model_validate"
+        ), "ModerationResult should have model_validate method (Pydantic BaseModel)"
 
 
 class TestTextModerationResult:
@@ -49,6 +51,9 @@ class TestTextModerationResult:
             contains_pii=True,
             is_unfriendly=False,
             is_unprofessional=True,
+            contains_hate_speech=False,
+            is_spam=False,
+            contains_misinformation=False,
         )
 
         assert hasattr(result, "rationale"), "TextModerationResult should have 'rationale' field"
@@ -63,6 +68,9 @@ class TestTextModerationResult:
             contains_pii=True,
             is_unfriendly=False,
             is_unprofessional=True,
+            contains_hate_speech=False,
+            is_spam=False,
+            contains_misinformation=False,
         )
 
         assert isinstance(result.rationale, str), "rationale should be a string"
@@ -72,8 +80,9 @@ class TestTextModerationResult:
 
     def test_inherits_from_moderation_result(self):
         """Verify TextModerationResult inherits from ModerationResult"""
-        assert issubclass(TextModerationResult, ModerationResult), \
-            "TextModerationResult should inherit from ModerationResult"
+        assert issubclass(
+            TextModerationResult, ModerationResult
+        ), "TextModerationResult should inherit from ModerationResult"
 
     def test_all_fields_are_required(self):
         """Verify all fields are required"""
@@ -114,8 +123,9 @@ class TestImageModerationResult:
 
     def test_inherits_from_moderation_result(self):
         """Verify ImageModerationResult inherits from ModerationResult"""
-        assert issubclass(ImageModerationResult, ModerationResult), \
-            "ImageModerationResult should inherit from ModerationResult"
+        assert issubclass(
+            ImageModerationResult, ModerationResult
+        ), "ImageModerationResult should inherit from ModerationResult"
 
     def test_all_fields_are_required(self):
         """Verify all fields are required"""
@@ -156,8 +166,9 @@ class TestVideoModerationResult:
 
     def test_inherits_from_moderation_result(self):
         """Verify VideoModerationResult inherits from ModerationResult"""
-        assert issubclass(VideoModerationResult, ModerationResult), \
-            "VideoModerationResult should inherit from ModerationResult"
+        assert issubclass(
+            VideoModerationResult, ModerationResult
+        ), "VideoModerationResult should inherit from ModerationResult"
 
     def test_all_fields_are_required(self):
         """Verify all fields are required"""
@@ -176,6 +187,9 @@ class TestAudioModerationResult:
             contains_pii=True,
             is_unfriendly=False,
             is_unprofessional=True,
+            contains_hate_speech=False,
+            is_spam=False,
+            contains_misinformation=False,
         )
 
         assert hasattr(result, "rationale"), "AudioModerationResult should have 'rationale' field"
@@ -192,6 +206,9 @@ class TestAudioModerationResult:
             contains_pii=True,
             is_unfriendly=False,
             is_unprofessional=True,
+            contains_hate_speech=False,
+            is_spam=False,
+            contains_misinformation=False,
         )
 
         assert isinstance(result.rationale, str), "rationale should be a string"
@@ -202,8 +219,9 @@ class TestAudioModerationResult:
 
     def test_inherits_from_moderation_result(self):
         """Verify AudioModerationResult inherits from ModerationResult"""
-        assert issubclass(AudioModerationResult, ModerationResult), \
-            "AudioModerationResult should inherit from ModerationResult"
+        assert issubclass(
+            AudioModerationResult, ModerationResult
+        ), "AudioModerationResult should inherit from ModerationResult"
 
     def test_all_fields_are_required(self):
         """Verify all fields are required"""

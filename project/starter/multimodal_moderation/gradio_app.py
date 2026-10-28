@@ -52,7 +52,13 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 MODERATION_CONFIG = {
     "text": {
         "endpoint": f"{API_BASE_URL}/api/v1/moderate_text",
-        "unsafe_flags": ["is_unfriendly", "is_unprofessional", "contains_pii"],
+        "unsafe_flags": [
+            "is_unfriendly",
+            "is_unprofessional",
+            "contains_pii",
+            "contains_hate_speech",
+            "is_spam",
+        ],
     },
     "image": {
         "endpoint": f"{API_BASE_URL}/api/v1/moderate_image_file",
@@ -64,9 +70,67 @@ MODERATION_CONFIG = {
     },
     "audio": {
         "endpoint": f"{API_BASE_URL}/api/v1/moderate_audio_file",
-        "unsafe_flags": ["is_unfriendly", "is_unprofessional", "contains_pii"],
+        "unsafe_flags": [
+            "is_unfriendly",
+            "is_unprofessional",
+            "contains_pii",
+            "contains_hate_speech",
+            "is_spam",
+        ],
     },
 }
+
+PERSONA_INSTRUCTIONS = {
+    "Angry customer (default)": (
+        "You are initially angry about the failed Power Widget Pro and want a refund. "
+        "Stay non-abusive, and gradually calm down if the agent is helpful."
+    ),
+    "Calm but dissatisfied": (
+        "You are disappointed that the Power Widget Pro failed, but remain calm and polite. "
+        "Explain the issue clearly and ask for a fair resolution."
+    ),
+    "Anxious about cost": (
+        "You are worried about the cost of replacing the failed Power Widget Pro. "
+        "Ask about affordable options and reassurance before deciding."
+    ),
+    "Impatient and demanding": (
+        "You are in a hurry and want a direct answer about the failed Power Widget Pro. "
+        "Be firm and brief, but never insulting or abusive."
+    ),
+    "Confused and needs guidance": (
+        "You are unsure why the Power Widget Pro stopped working. Ask simple questions "
+        "and need clear, step-by-step guidance."
+    ),
+}
+
+ANALYTICS_FLAGS = (
+    "contains_pii",
+    "is_unfriendly",
+    "is_unprofessional",
+    "contains_hate_speech",
+    "is_spam",
+    "contains_misinformation",
+    "is_disturbing",
+    "is_low_quality",
+)
+
+
+def _record_moderation_result(analytics: dict[str, int], result: dict[str, Any]) -> None:
+    analytics["total_checks"] = analytics.get("total_checks", 0) + 1
+    if any(result.get(flag) is True for flag in ANALYTICS_FLAGS):
+        analytics["flagged_checks"] = analytics.get("flagged_checks", 0) + 1
+    for flag in ANALYTICS_FLAGS:
+        if result.get(flag) is True:
+            analytics[flag] = analytics.get(flag, 0) + 1
+
+
+def _analytics_rows(analytics: dict[str, int]) -> list[list[str | int]]:
+    rows: list[list[str | int]] = [
+        ["Total checks", analytics.get("total_checks", 0)],
+        ["Flagged checks", analytics.get("flagged_checks", 0)],
+    ]
+    rows.extend([[flag.replace("_", " ").title(), analytics.get(flag, 0)] for flag in ANALYTICS_FLAGS])
+    return rows
 
 
 def _call_text_moderation(text: str, span: trace.Span) -> Tuple[dict[str, Any], str, str, str]:
@@ -151,7 +215,12 @@ def _call_media_moderation(media: str, span: trace.Span) -> Tuple[dict[str, Any]
     return result, feedback, content_type, mime_type
 
 
-def check_content_safety(*, text: str | None = None, media: str | None = None) -> Tuple[bool, str, str]:
+def check_content_safety(
+    *,
+    text: str | None = None,
+    media: str | None = None,
+    analytics: dict[str, int] | None = None,
+) -> Tuple[bool, str, str]:
     """
     Check if content is safe by calling the moderation backend.
 
@@ -178,6 +247,9 @@ def check_content_safety(*, text: str | None = None, media: str | None = None) -
         elif media is not None:
             result, feedback, content_type, mime_type = _call_media_moderation(media, span)
 
+        if analytics is not None:
+            _record_moderation_result(analytics, result)
+
         # Add moderation results to tracing span
         span.set_attributes({f"output.{k}": v for k, v in result.items()})
 
@@ -187,9 +259,12 @@ def check_content_safety(*, text: str | None = None, media: str | None = None) -
     # Check if any unsafe flags were set by the moderation service
     config = MODERATION_CONFIG[content_type]
     for flag in config["unsafe_flags"]:
-        if result[flag]:
+        if result.get(flag) is True:
             # Content is unsafe - return False with feedback
             return False, f"Content flagged: {feedback}", mime_type
+
+    if result.get("contains_misinformation"):
+        feedback = f"Review recommended: possible misinformation. {feedback}"
 
     # Content is safe - return True with feedback
     return True, feedback, mime_type
@@ -213,7 +288,14 @@ class ChatSessionWithTracing:
             attributes={"session.id": self.session_id},
         )
 
-    async def chat_with_gemini(self, message: dict, history: List, past_messages: List) -> Tuple[str, List, str]:
+    async def chat_with_gemini(
+        self,
+        message: dict,
+        history: List,
+        past_messages: List,
+        persona: str = "Angry customer (default)",
+        analytics_state: dict[str, int] | None = None,
+    ) -> Tuple[str, List, str, list[list[str | int]], dict[str, int]]:
         """
         Process a chat turn: moderate content, then send to AI customer.
 
@@ -230,20 +312,29 @@ class ChatSessionWithTracing:
             past_messages: Pydantic AI's message history (used for agent context)
 
         Returns:
-            Tuple of (response_text, updated_messages, feedback_text)
+            Tuple of response, message history, feedback, dashboard rows, and aggregate state
         """
+        if persona not in PERSONA_INSTRUCTIONS:
+            raise gr.Error("Select a valid customer persona.")
+        if analytics_state is None:
+            analytics_state = {}
+
         # Create a tracing span for this chat turn
 
         with tracer.start_as_current_span(
             "chat_turn",
             context=trace.set_span_in_context(self.conversation_span),
         ) as span:
-            
+
             logger.info(f"New turn - Text: '{message.get('text', '')[:50]}...', Files: {len(message.get('files', []))}")
 
             # Build prompt for the AI customer (includes text and media)
             prompt_parts: List[str | BinaryContent] = [
-                "This is the next message from the support agent:",
+                (
+                    "Continue the ACME support roleplay using this customer persona: "
+                    f"{PERSONA_INSTRUCTIONS[persona]}\n"
+                    "This is the next message from the support agent:"
+                ),
             ]
 
             # Initialize safety message to empty string, will be set if content is flagged
@@ -256,7 +347,10 @@ class ChatSessionWithTracing:
                 if key == "text" and value:
 
                     # Call moderation backend (FastAPI service)
-                    is_safe, safety_message, mime_type = check_content_safety(text=value)
+                    is_safe, safety_message, mime_type = check_content_safety(
+                        text=value,
+                        analytics=analytics_state,
+                    )
 
                     if not is_safe:
                         # Content flagged - block and return error
@@ -265,7 +359,7 @@ class ChatSessionWithTracing:
 
                         span.set_attribute("feedback", feedback)
 
-                        return response, past_messages, feedback
+                        return response, past_messages, feedback, _analytics_rows(analytics_state), analytics_state
 
                     # Content safe - add to prompt
                     prompt_parts.append(value)
@@ -278,7 +372,10 @@ class ChatSessionWithTracing:
                         try:
 
                             # Call moderation backend (FastAPI service)
-                            is_safe, safety_message, mime_type = check_content_safety(media=file_path)
+                            is_safe, safety_message, mime_type = check_content_safety(
+                                media=file_path,
+                                analytics=analytics_state,
+                            )
 
                             if not is_safe:
                                 # Content flagged - block and return error
@@ -288,12 +385,18 @@ class ChatSessionWithTracing:
                                 )
                                 span.set_attribute("feedback", feedback)
 
-                                return response, past_messages, feedback
+                                return (
+                                    response,
+                                    past_messages,
+                                    feedback,
+                                    _analytics_rows(analytics_state),
+                                    analytics_state,
+                                )
 
                             # Content safe - read file and add to prompt
                             with open(file_path, "rb") as f:
                                 file_bytes = f.read()
-                            
+
                             prompt_parts.append(BinaryContent(data=file_bytes, media_type=mime_type))
 
                         except ValueError as e:
@@ -313,7 +416,13 @@ class ChatSessionWithTracing:
                     )
 
                 logger.info(f"Response generated ({len(result.all_messages())} messages in history)")
-                return result.output, result.all_messages(), safety_message
+                return (
+                    result.output,
+                    result.all_messages(),
+                    safety_message,
+                    _analytics_rows(analytics_state),
+                    analytics_state,
+                )
 
             except Exception as e:
                 logger.error(f"Error in chat_with_gemini: {str(e)}")
@@ -353,6 +462,7 @@ def create_chat_interface() -> gr.Blocks:
     with gr.Blocks(title="ACME Customer Service Training Agent", fill_height=True) as demo:
         # State to hold Pydantic AI's message history (preserves context across turns)
         past_messages_state = gr.State([])
+        analytics_state = gr.State({})
 
         # Create feedback_display first (with render=False) so we can reference it
         # in ChatInterface's additional_outputs below, then render it in the sidebar later
@@ -363,6 +473,14 @@ def create_chat_interface() -> gr.Blocks:
             visible=True,
             lines=10,
             render=False,  # Don't render yet - will render in sidebar
+        )
+        dashboard = gr.Dataframe(
+            headers=["Metric", "Count"],
+            datatype=["str", "number"],
+            value=_analytics_rows({}),
+            label="Aggregate moderation counts",
+            interactive=False,
+            render=False,
         )
 
         # UI Layout
@@ -389,12 +507,28 @@ def create_chat_interface() -> gr.Blocks:
                         placeholder="👋 Start by greeting the customer or introducing yourself. The AI customer will respond with their complaint.",
                         height="75vh",
                     ),
-                    additional_inputs=[past_messages_state],
-                    additional_outputs=[past_messages_state, feedback_display],
+                    additional_inputs=[
+                        past_messages_state,
+                        gr.Dropdown(
+                            choices=list(PERSONA_INSTRUCTIONS),
+                            value="Angry customer (default)",
+                            label="Customer persona",
+                        ),
+                        analytics_state,
+                    ],
+                    additional_outputs=[past_messages_state, feedback_display, dashboard, analytics_state],
                 )
 
             # Right column: Feedback and guidelines (25% width)
             with gr.Column(scale=1):
+                gr.Markdown("### 📊 Session Moderation Dashboard")
+                dashboard.render()
+                gr.Markdown(
+                    "Counts are temporary and scoped to this chat session. "
+                    "Message text, files, and PII are not stored in the dashboard. "
+                    "Possible misinformation is flagged for review but does not block this training chat."
+                )
+
                 # Render the feedback display at the top of the sidebar
                 feedback_display.render()
 
@@ -421,6 +555,8 @@ def create_chat_interface() -> gr.Blocks:
                 - Inappropriate content
                 - Personally identifiable information
                 - Unprofessional language
+                - Hate speech and spam (blocked for text and audio)
+                - Possible misinformation (review warning; not blocked)
                 """
                 )
 

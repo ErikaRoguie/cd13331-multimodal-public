@@ -22,10 +22,14 @@ Detect if:
 - the tone of the message is unfriendly
 - the tone of the message is unprofessional
 - the message contains any personally-identifiable information (PII)
+- the message contains hate speech or targeted hateful abuse
+- the message is unsolicited or repetitive spam
+- the message makes a clearly false factual claim that can be verified from context provided in the message.
+  Be conservative: do not label opinions, complaints, or claims you cannot verify as misinformation.
 </instructions>
 
 <output>
-Provide a detailed rationale for your choices as well as a confidence score between 0 and 1 on your assessment.
+Provide a detailed rationale for your choices.
 </output>
 """
 

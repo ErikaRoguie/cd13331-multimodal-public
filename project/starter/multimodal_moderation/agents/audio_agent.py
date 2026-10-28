@@ -22,6 +22,10 @@ INSTRUCTIONS
    - the audio contains unfriendly tone or content
    - the audio contains unprofessional tone or content
    - the audio contains any personally-identifiable information (PII) such as names, addresses, phone numbers
+   - the audio contains hate speech or targeted hateful abuse
+   - the audio is unsolicited or repetitive spam
+   - the audio makes a clearly false factual claim that can be verified from context provided in the audio.
+     Be conservative: do not label opinions, complaints, or claims you cannot verify as misinformation.
 
 OUTPUT
 Provide the transcription and a detailed rationale for your moderation choices.
@@ -34,11 +38,7 @@ audio_moderation_agent = Agent(
 )
 
 
-async def moderate_audio(
-    model_choice: ModelChoice,
-    audio_source: bytes,
-    media_type: str
-) -> AudioModerationResult:
+async def moderate_audio(model_choice: ModelChoice, audio_source: bytes, media_type: str) -> AudioModerationResult:
 
     audio_input = BinaryContent(data=audio_source, media_type=media_type)
 

@@ -11,6 +11,19 @@ The app allows a trainee customer agent to interact with a simulated angry custo
 chatting with the customer, and every message and content provided by the trainee agent is moderated and observed to make sure all
 communications following company standards.
 
+## Additional training features
+
+The chat supports five selectable customer personas, with the original angry
+customer as the default. Text and audio moderation also report hate speech,
+spam, and possible misinformation. Hate speech and spam are blocking flags;
+possible misinformation is a conservative review warning and does not block the
+training conversation because the project has no trusted product-fact source.
+
+The Gradio sidebar displays per-chat aggregate moderation counts. The dashboard
+keeps counts in Gradio session state only; it does not retain message text,
+uploaded media, transcriptions, or PII, and the counts disappear when the session
+ends.
+
 Architecture:
 1. Specialized Agents - Four moderation agents (text, image, video, audio), each using Google Gemini AI with custom prompts to check their specific content type (agents are in the `agents` folder)
 2. LLM-as-a-customer: an agent (`agents/customer_agent.py`)
